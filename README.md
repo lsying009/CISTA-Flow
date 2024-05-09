@@ -2,15 +2,15 @@
 
 This repository is the official implementation of [Enhanced Event-Based Video Reconstruction with Motion Compensation](https://arxiv.org/pdf/2403.11961). In this work, we introduce a CISTA-Flow network to enhance reconstruction with motion compensation by integrating [CISTA-LSTC](https://ieeexplore.ieee.org/abstract/document/10130595) with a flow estimation network, particularly utilizing the [DCEIFlow](https://github.com/danqu130/DCEIFlow) or [ERAFT](https://github.com/uzh-rpg/E-RAFT). In this model, the reconstructed image and corresponding events are used to estimate flow. Subsequently, the flow is utilized to warp both the previously reconstructed frame and sparse codes as the inputs of CISTA-LSTC for current reconstruction.
 
-![arch](cista-flow-arch.pdf)
-<embed src="cista-flow-arch.pdf" type="application/pdf" width="100%" height="600px" />
+![arch](cista-flow-arch.png)
+
 
 
 
 ## Training
 We propose an iterative training framework for this combined system, as illustrated in figure below. Note that ```train.py``` only contains code for training CISTA-Flow after obtaining DCEIFlow (GT I) and CISTA (GT Flow). ```path_to_flownet``` refers to the path to DCEIFlow (GT I) and ```path_to_e2v``` refers to the path to CISTA (GT Flow). We provided the two pretrained models ```dceiflow-GTI.pth.tar/eraft-GTI.pth.tar``` and ```cista-GTFlow.pth.tar``` under ```pretrained```. Here, ```model_mode="cista-eiflow" or "cista-eraft"```. 
 
-![train](cista-flow-train.pdf)
+![train](cista-flow-train.png)
 
 ```bash
 python train.py \
