@@ -1,0 +1,7 @@
+**/__pycache__/
+summary
+models
+test_images
+run_train.sh*
+run_test.sh*
+run_noeval.sh*
