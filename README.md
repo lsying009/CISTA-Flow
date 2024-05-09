@@ -3,6 +3,8 @@
 This repository is the official implementation of [Enhanced Event-Based Video Reconstruction with Motion Compensation](https://arxiv.org/pdf/2403.11961). In this work, we introduce a CISTA-Flow network to enhance reconstruction with motion compensation by integrating [CISTA-LSTC](https://ieeexplore.ieee.org/abstract/document/10130595) with a flow estimation network, particularly utilizing the [DCEIFlow](https://github.com/danqu130/DCEIFlow) or [ERAFT](https://github.com/uzh-rpg/E-RAFT). In this model, the reconstructed image and corresponding events are used to estimate flow. Subsequently, the flow is utilized to warp both the previously reconstructed frame and sparse codes as the inputs of CISTA-LSTC for current reconstruction.
 
 ![arch](cista-flow-arch.pdf)
+<embed src="cista-flow-arch.pdf" type="application/pdf" width="100%" height="600px" />
+
 
 
 ## Training
