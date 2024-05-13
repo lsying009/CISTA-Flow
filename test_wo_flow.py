@@ -42,13 +42,15 @@ class Reconstructor(nn.Module):
                 self.path_to_sequences.append(os.path.join(cfgs.path_to_test_data, folder_name))
         self.path_to_sequences.sort()
 
-        self.video_renderer = ImageReader(device=self.device)
+        self.video_renderer = ImageReader(cfgs, device=self.device)
         
         # initialize reconstruction network        
         if self.model_mode == 'cista-eiflow':
             self.model = DCEIFlowCistaNet(cfgs)
         elif self.model_mode == 'cista-eraft':
             self.model = ERAFTCistaNet(cfgs)
+        elif self.model_mode == 'cista-idnet':
+            self.model = IDCistaNet(cfgs)
         else:
             assert self.model_mode in ['cista-eiflow', 'cista-eraft']
         
@@ -138,9 +140,12 @@ class Reconstructor(nn.Module):
                             input_data['event_voxel_old'] = evs_old
                             pred_image, batch_flow, states = self.model(input_data, states)
                             evs_old = evs.clone() 
-                        elif self.model_mode == 'cista-ruflow':
-                            pred_image, batch_flow, states, flow_states = self.model(input_data, states, flow_states) 
-
+                        elif self.model_mode in ['cista-idnet']:
+                            if frame_idx == 0:
+                                flow_init = None
+                            pred_image, batch_flow, states = self.model(input_data, states, flow_init)
+                            flow_init = batch_flow['next_flow']
+                            
                         prev_image = pred_image.clone()
                         
                         # if cfgs.display_test:
@@ -161,12 +166,11 @@ class Reconstructor(nn.Module):
                     if frame_idx==0 or (frame_idx+1) %1 == 0:
                         image_writer(pred_image_uint8, frame_idx+1) #-------
                         flow_writer(batch_flow['flow_final'].squeeze().cpu().data.numpy(), frame_idx)
-                        # event_img = make_event_preview(evs.cpu().data.numpy(), mode='red-blue', num_bins_to_show=-1) #mode='grayscale'
-                        event_img = make_event_preview(add_image0['voxel_grid_warped'].cpu().data.numpy(), mode='grayscale', num_bins_to_show=1) #mode='red-blue'
+                        event_img = make_event_preview(evs.cpu().data.numpy(), mode='red-blue', num_bins_to_show=-1) #mode='grayscale'
                         event_writer(event_img, frame_idx)
-                        
-                        event_img = make_event_preview(add_image['voxel_grid_warped'].cpu().data.numpy(), mode='grayscale', num_bins_to_show=1) #mode='grayscale'
-                        warped_event_writer(event_img, frame_idx)
+                        # event_img = make_event_preview(add_image0['voxel_grid_warped'].cpu().data.numpy(), mode='grayscale', num_bins_to_show=1) #mode='red-blue'
+                        # event_img = make_event_preview(add_image['voxel_grid_warped'].cpu().data.numpy(), mode='grayscale', num_bins_to_show=1) #mode='grayscale'
+                        # warped_event_writer(event_img, frame_idx)
                     
                     if frame_idx >=3:
                         if metric_keys is None:

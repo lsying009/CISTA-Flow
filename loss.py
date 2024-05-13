@@ -175,7 +175,7 @@ class FlowL1LossDict(nn.Module):
 
         if fmap2_pseudo is None:
             metrics = {
-                'l1loss': flow_loss,
+                'flow_l1loss': flow_loss,
                 'epe': epe.mean(),
                 '1px': (epe < 1).float().mean(),
                 '3px': (epe < 3).float().mean(),
@@ -183,7 +183,7 @@ class FlowL1LossDict(nn.Module):
             }
         else:
             metrics = {
-                'l1loss': flow_loss,
+                'flow_l1loss': flow_loss,
                 'epe': epe.mean(),
                 'pseudo': pseudo_loss,
                 '1px': (epe < 1).float().mean(),
@@ -304,10 +304,10 @@ class FlowL1LossDict(nn.Module):
 
 
 class ReconLoss(nn.Module):
-    def __init__(self, frame_warper): #
+    def __init__(self, frame_warper, lpips_net='alex'): #
         super().__init__()
         self.warp_fn = frame_warper
-        self.lpips_loss_fn = PerceptualLoss(net='vgg') # alex for evaluate
+        self.lpips_loss_fn = PerceptualLoss(net=lpips_net) # alex for evaluate
         self.L1_loss_fn = nn.L1Loss()
         self.mse_loss_fn = nn.MSELoss()
         self.psnr_fn = PSNR(data_range=1)
@@ -337,12 +337,21 @@ class ReconLoss(nn.Module):
             loss_consistency = 5*(M*F.l1_loss(warped_prev_image, out, reduction='none')).mean()
         else:
             loss_consistency = 0
-
-        loss = self.lpips_loss_fn(out, batch_target['gt_img1'],normalize=True) + \
-            self.L1_loss_fn(out, batch_target['gt_img1']) + \
-                1 - self.ssim_loss_fn(out, batch_target['gt_img1']) + loss_consistency #+ loss_flow
+        lpips_loss = self.lpips_loss_fn(out, batch_target['gt_img1'],normalize=True)
+        L1_loss = self.L1_loss_fn(out, batch_target['gt_img1'])
+        ssim_loss = 1 - self.ssim_loss_fn(out, batch_target['gt_img1'])
+        loss = lpips_loss + L1_loss + ssim_loss + loss_consistency #+ loss_flow
         
-        return loss
+        loss_dict = dict(
+            LPIPS=lpips_loss,
+            L1=L1_loss,
+            SSIM=ssim_loss,
+            loss_consistency=loss_consistency,
+            loss_rec=loss-loss_consistency,
+            loss_rec_all=loss,
+        )
+        
+        return loss, loss_dict
 
 
 class FlowReconLoss(nn.Module):
@@ -352,11 +361,11 @@ class FlowReconLoss(nn.Module):
         evaluate() for evaluation
         others for training loss
     '''
-    def __init__(self, image_dim, frame_warper, ds=8, is_bi=False):
+    def __init__(self, image_dim, frame_warper, ds=8, is_bi=False, lpips_net='alex'):
         super().__init__()
         self.warp_fn = frame_warper
         self.is_bi = is_bi
-        self.reconstruction_loss_fn = ReconLoss(frame_warper)
+        self.reconstruction_loss_fn = ReconLoss(frame_warper, lpips_net=lpips_net)
         self.flow_loss_fn = FlowL1LossDict(image_dim, frame_warper, ds=ds, is_bi=is_bi)
 
     def evaluate(self, rec_img, flow_final, batch_target):
@@ -372,26 +381,31 @@ class FlowReconLoss(nn.Module):
         if loss_mode in ['flow', 'both']:
             if self.is_bi:
                 batch_target['valid_bw'] = torch.exp(-50*F.mse_loss(self.warp_fn.warp_frame(batch_target['gt_img1'], batch_target['gt_flow_bw']), batch_target['gt_img0'], reduction='none'))
-            loss = self.flow_loss_fn(batch_flow, batch_target)[0]
-            return loss
+            loss, loss_dict = self.flow_loss_fn(batch_flow, batch_target)[0]
+            return loss, loss_dict
         else:
-            return 0. #torch.tensor(0.)
+            return 0., 0 #torch.tensor(0.)
     
     def compute_rec_loss(self, out, rec_img0, batch_target, loss_mode, is_loss_consis):
         if loss_mode in ['rec', 'both']:
-            loss = self.reconstruction_loss_fn(out, rec_img0, batch_target, is_loss_consis=is_loss_consis)
-            return loss
+            loss, loss_dict = self.reconstruction_loss_fn(out, rec_img0, batch_target, is_loss_consis=is_loss_consis)
+            return loss, loss_dict
         else:
-            return 0 
+            return 0, 0 
     
     def forward(self, out, rec_img0, batch_flow, batch_target, loss_mode, is_loss_consis=True):
         assert loss_mode in ['rec', 'flow', 'both']
         batch_target['valid'] = torch.exp(-50*F.mse_loss(self.warp_fn.warp_frame(batch_target['gt_img0'], batch_target['gt_flow']), batch_target['gt_img1'], reduction='none'))
         loss = 0
+        # loss_dict = {}
         if loss_mode in ['rec', 'both']:
-            loss += self.reconstruction_loss_fn(out, rec_img0, batch_target, is_loss_consis=is_loss_consis)
+            loss_rec = self.reconstruction_loss_fn(out, rec_img0, batch_target, is_loss_consis=is_loss_consis)[0]
+            loss += loss_rec
+            # loss_dict = {**loss_dict, **loss_rec_dict}
         if loss_mode in ['flow', 'both']:
             if self.is_bi:
                 batch_target['valid_bw'] = torch.exp(-50*F.mse_loss(self.warp_fn.warp_frame(batch_target['gt_img1'], batch_target['gt_flow_bw']), batch_target['gt_img0'], reduction='none'))
-            loss += self.flow_loss_fn(batch_flow, batch_target)[0]
+            loss_flow = self.flow_loss_fn(batch_flow, batch_target)[0]
+            loss += loss_flow
+            # loss_dict = {**loss_dict, **loss_flow_dict}
         return loss

@@ -3,6 +3,8 @@ from .base_layers import *
 from utils.data_io import show_whole_img
 from DCEIFlow.DCEIFlow import DCEIFlow
 from ERAFT.eraft import ERAFT
+from idn.idedeq import IDEDEQIDO
+from omegaconf import OmegaConf
 from utils.flow_utils import FrameWarp
 
 class CistaLSTCNet(nn.Module):
@@ -244,7 +246,67 @@ class ERAFTCistaNet(BaseFlowRec):
           I_rec, states = self.cista_net(batch_data['event_voxel'], warped_I, states)
 
           return I_rec, batch_flow, states
+
+
+# single GPU
+class IDCistaNet(BaseFlowRec):
+     '''CISTA-Flow: CISTA-LSTC + IDNet'''
+     def __init__(self, args):
+          super(IDCistaNet, self).__init__(args)
+          config = {
+               'update_iters': 1,
+               'pred_next_flow': True,
+               'image_dim':args.image_dim,
+          }
+          config = OmegaConf.create(config)
+          self.event_flownet = IDEDEQIDO(config)
+        
+
+     def forward(self, batch_data, states, flow_init=None, batch_gt=dict([])): #, gt_prev_frame=None, gt_frame=None, gt_flow=None):
+          '''
+          Input:
+               batch_data: dict
+                    A pair of event voxel grids, event_voxel_old and event_voxel
+               states: list
+                    For CISTA-LSTC, length = 3, states[1] is sparse codes Z from previous reconstruction
+               batch_gt(Optional): dict
+                    gt_flow (F_0->1): Ground truth flow, only for training CISTA (GT Flow)
+          Output:
+               I_rec: Tensor, reconstructed frame \hat{I}_1
+               batch_flow: dict
+                    output of flow network, batch_flow['flow_final'] is the estimated forward flow \hat{F}_0->1
+                    for details refer to ERAFT
+               states: list
+                    updated states
+          '''
           
+          # Flow estimation using E_0^1 and \hat{I}_0
+          batch_flow = self.event_flownet(event_bins=batch_data['event_voxel'], flow_init=flow_init)
+          # flow_init = batch_flow['next_flow']
+          flow_final = batch_flow['flow_final']
+          
+          if self.fix_net_name == 'flow':
+               flow_final = flow_final.detach()
+               flow_final.requires_grad = False
+          
+          # gt_flow is only used for training CISTA (GTFlow)
+          if 'gt_flow' in batch_gt.keys():
+               flow_final = batch_gt['gt_flow']
+               
+          if not flow_final.any():
+               warped_I = batch_data['rec_img0']
+          else:
+               # Warp inputs I and Z for CISTA-LSTC using flow
+               warped_I = self.frame_warp.warp_frame(batch_data['rec_img0'], flow_final)
+               if states is not None:
+                    downsampled_flow = nn.functional.interpolate(flow_final, scale_factor=self.scale_factor, mode='bilinear', align_corners=True)
+                    states[1] = self.frame_warp.warp_frame(states[1], downsampled_flow)
+          
+          # Reconstruction using E_0^1, warped I and Z
+          I_rec, states = self.cista_net(batch_data['event_voxel'], warped_I, states)
+
+          return I_rec, batch_flow, states
+       
      
 # 2 GPU
 class DCEIFlowCistaNet2GPU(BaseFlowRec):

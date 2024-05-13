@@ -3,7 +3,6 @@ import numpy as np
 import cv2
 import os
 
-from superslomo.upsamp_sequence import Upsampler
 from utils.event_process import event_preprocess, events_to_voxel_grid, events_to_voxel_grid_pol
 from .event_readers import SingleEventReaderNpz, RefTimeEventReaderZip, FixedSizeEventReader
 
@@ -346,7 +345,7 @@ class ImageReader(VR):
         super(ImageReader, self).__init__(cfgs.image_dim, cfgs.num_bins, device)
         '''Load HFR video in image format from a folder'''
         self.time_unit = cfgs.time_unit
-        self.is_with_flow = cfgs.is_with_flow
+        # self.is_with_flow = cfgs.is_with_flow
         self.is_forward_flow = cfgs.is_forward_flow
         self.flow_name = "flow01" if cfgs.is_forward_flow else "flow10"
         self.flow_coef = -1 if not cfgs.is_forward_flow else 1
@@ -369,8 +368,6 @@ class ImageReader(VR):
         path_to_events = []
         self.path_to_flow = []
         
-        flow_folder_name = 'flow'
-        
         for root, dirs, files in os.walk(path_to_sequence):
             # print(root, root.split('/')[-1])
             data_type_folder_name = root.split('/')[-1]
@@ -381,8 +378,9 @@ class ImageReader(VR):
                     path_to_timestamps = os.path.join(root, file_name)
                 elif ((file_name.split('.')[-1] in ['npz']) and 'flow' not in file_name) or file_name in ['events.txt', 'events.zip', 'events.csv']: 
                     path_to_events.append(os.path.join(root, file_name))
-                elif self.is_with_flow and (file_name.split('.')[-1] in ['npz']) and flow_folder_name in root.split('/')[-1]: #------------
+                elif (file_name.split('.')[-1] in ['npz']) and 'flow' in file_name: #root.split('/')[-1]: #------------
                     self.path_to_flow.append(os.path.join(root, file_name))
+                    
         self.path_to_frames.sort()
         self.path_to_flow.sort()
         # print(path_to_events)
@@ -393,7 +391,7 @@ class ImageReader(VR):
         if num_load_frames > 0:
             self.path_to_frames = self.path_to_frames[:num_load_frames]
             self.timestamps = self.timestamps[:num_load_frames]
-            if self.is_with_flow:
+            if len(self.path_to_flow) > 0:
                 self.path_to_flow = self.path_to_flow[:num_load_frames]
 
         if self.dataset == 'HSERGB':
@@ -408,7 +406,8 @@ class ImageReader(VR):
         
         assert height == self.height or width == self.width, "Image dim should be H{}xW{}".format(height, width)
 
-        assert self.is_with_flow and len(self.path_to_flow) == 0, "GT Flow is not available!"
+        # if self.is_with_flow:
+        #     assert len(self.path_to_flow) > 0, "GT Flow is not available!"
         
         self.num_frames = len(self.path_to_frames)
         

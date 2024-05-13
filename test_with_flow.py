@@ -42,13 +42,15 @@ class Reconstructor(nn.Module):
                 self.path_to_sequences.append(os.path.join(cfgs.path_to_test_data, folder_name))
         self.path_to_sequences.sort()
 
-        self.video_renderer = ImageReader(device=self.device)
+        self.video_renderer = ImageReader(cfgs, device=self.device)
 
         # initialize reconstruction network        
         if self.model_mode == 'cista-eiflow':
             self.model = DCEIFlowCistaNet(cfgs)
         elif self.model_mode == 'cista-eraft':
             self.model = ERAFTCistaNet(cfgs)
+        elif self.model_mode == 'cista-idnet':
+            self.model = IDCistaNet(cfgs)
         else:
             assert self.model_mode in ['cista-eiflow', 'cista-eraft']
         
@@ -73,6 +75,13 @@ class Reconstructor(nn.Module):
         
         self.model.to(device)
         self.model.eval()
+        
+        total_params = sum(p.numel() for p in self.model.parameters())
+        print(f"Total parameters: {total_params}")
+        # for float32
+        total_memory_MB = total_params * 32 / 8 / 1024 / 1024
+        print(f"Estimated model memory size: {total_memory_MB:.2f} MB")
+
 
         self.frame_warp = FrameWarp(mode=cfgs.warp_mode)
         self.loss_fn = FlowReconLoss(cfgs.image_dim, self.frame_warp, ds=cfgs.ds, is_bi=False).to(device)
@@ -87,7 +96,7 @@ class Reconstructor(nn.Module):
             metric_keys = None
             for seq_id, path_to_sequence_folder in enumerate(self.path_to_sequences):
                 dataset_name=path_to_sequence_folder.split('/')[-1].split('.')[0]
-
+                
                 if self.test_data_name is not None and dataset_name != self.test_data_name:
                     continue
                 self.video_renderer.initialize(path_to_sequence_folder, self.num_load_frames)
@@ -138,6 +147,11 @@ class Reconstructor(nn.Module):
                             input_data['event_voxel_old'] = evs_old
                             pred_image, batch_flow, states = self.model(input_data, states, input_gt)
                             evs_old = evs.clone()
+                        elif self.model_mode in ['cista-idnet']:
+                            if frame_idx == 0:
+                                flow_init = None
+                            pred_image, batch_flow, states = self.model(input_data, states, flow_init, input_gt)
+                            flow_init = batch_flow['next_flow']
 
                         prev_image = pred_image.clone()
                         

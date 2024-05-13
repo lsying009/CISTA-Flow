@@ -5,3 +5,5 @@ test_images
 run_train.sh*
 run_test.sh*
 run_noeval.sh*
+train_all.py
+loss_all.py

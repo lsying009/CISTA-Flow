@@ -41,7 +41,7 @@ class Train:
             
         # Loss
         self.frame_warp = FrameWarp(mode=cfgs.warp_mode)
-        self.loss_fn = FlowReconLoss(cfgs.image_dim, self.frame_warp,  ds=cfgs.ds, is_bi=False).to(self.device) #self.device
+        self.loss_fn = FlowReconLoss(cfgs.image_dim, self.frame_warp,  ds=cfgs.ds, is_bi=False, lpips_net='vgg').to(self.device) #self.device
     
         self.model_mode = cfgs.model_mode
         if self.model_mode == 'cista-eiflow':
@@ -103,7 +103,7 @@ class Train:
         
         
 
-    def run_train(self, cfgs, model):
+    def run_train(self, cfgs):
         '''
             1. [0, flow_epoch], train DCEIFlow/ERAFT (Rec I), fix CISTA (GT Flow)
             2. [flow_epoch, flow_epoch + rec_epoch], train CISTA (Pred Flow), fix DCEIFlow/ERAFT (Rec I)
@@ -114,34 +114,70 @@ class Train:
             lr = self.scheduler.get_last_lr()[0]
             
             if epoch <cfgs.flow_epoch:
-                model.fix_params(net_name='rec')
+                self.model.fix_params(net_name='rec')
                 train_rec = False
             elif epoch >=cfgs.flow_epoch and epoch < cfgs.flow_epoch + cfgs.rec_epoch:
-                model.fix_params(net_name='flow')
+                self.model.fix_params(net_name='flow')
                 train_rec = True
             else:
                 self.optimizer.param_groups[0]['lr'] = 3e-5
                 if (epoch-cfgs.flow_epoch - cfgs.rec_epoch)%4 >=2:
-                    model.fix_params(net_name='flow')
+                    self.model.fix_params(net_name='flow')
                     train_rec = True
                 else:
-                    model.fix_params(net_name='rec')
+                    self.model.fix_params(net_name='rec')
                     train_rec = False
             print('lr:', self.optimizer.param_groups[0]['lr'])
             print('train_rec: ', train_rec)    
             
-            self.train_raft(epoch, cfgs, train_rec, 'cuda:0' if cfgs.distributed else self.device)
+            self.train_epoch(epoch, cfgs, train_rec, 'cuda:0' if cfgs.distributed else self.device)
  
             self.scheduler.step()
             
             if epoch == 0 or (epoch+1)==cfgs.flow_epoch+cfgs.rec_epoch or ((epoch+1)>=cfgs.flow_epoch + cfgs.rec_epoch and (epoch+1-cfgs.flow_epoch-cfgs.rec_epoch)%2 == 0) or (epoch+1) % 10 == 0: # + cfgs.rec_epoch or (epoch+1) % 10 == 0:
-                torch.save({'epoch': epoch, 'state_dict': model.state_dict()}, 
+                torch.save({'epoch': epoch, 'state_dict': self.model.state_dict()}, 
                             os.path.join(self.path_to_model, '{}_{}.pth.tar'\
                                 .format(self.model_name, epoch+1)))    
 
 
+    def run_train_distributed(self, cfgs):
+        '''
+            1. [0, flow_epoch], train DCEIFlow/ERAFT (Rec I), fix CISTA (GT Flow)
+            2. [flow_epoch, flow_epoch + rec_epoch], train CISTA (Pred Flow), fix DCEIFlow/ERAFT (Rec I)
+            3. [flow_epoch + rec_epoch, epoch], train CISTA-Flow without GT data iteratively
+        '''
 
-    def train_raft(self, epoch, cfgs, train_rec=False, device='cuda:0'):
+        for epoch in range(cfgs.load_epoch_for_train, cfgs.epochs):
+            lr = self.scheduler.get_last_lr()[0]
+            
+            if epoch <cfgs.flow_epoch:
+                self.model.module.fix_params(net_name='rec')
+                train_rec = False
+            elif epoch >=cfgs.flow_epoch and epoch < cfgs.flow_epoch + cfgs.rec_epoch:
+                self.model.module.fix_params(net_name='flow')
+                train_rec = True
+            else:
+                self.optimizer.param_groups[0]['lr'] = 3e-5
+                if (epoch-cfgs.flow_epoch - cfgs.rec_epoch)%4 >=2:
+                    self.model.module.fix_params(net_name='flow')
+                    train_rec = True
+                else:
+                    self.model.module.fix_params(net_name='rec')
+                    train_rec = False
+            print('lr:', self.optimizer.param_groups[0]['lr'])
+            print('train_rec: ', train_rec)    
+            
+            self.train_epoch(epoch, cfgs, train_rec, 'cuda:0' if cfgs.distributed else self.device)
+ 
+            self.scheduler.step()
+            
+            if epoch == 0 or (epoch+1)==cfgs.flow_epoch+cfgs.rec_epoch or ((epoch+1)>=cfgs.flow_epoch + cfgs.rec_epoch and (epoch+1-cfgs.flow_epoch-cfgs.rec_epoch)%2 == 0) or (epoch+1) % 10 == 0: # + cfgs.rec_epoch or (epoch+1) % 10 == 0:
+                torch.save({'epoch': epoch, 'state_dict': self.model.module.state_dict()}, 
+                            os.path.join(self.path_to_model, '{}_{}.pth.tar'\
+                                .format(self.model_name, epoch+1)))    
+
+
+    def train_epoch(self, epoch, cfgs, train_rec=False, device='cuda:0'):
         torch.cuda.empty_cache()
 
         batch_num =len(self.train_loader)
@@ -228,8 +264,8 @@ if __name__ == '__main__':
     print(device)
     model_train = Train(cfgs, device)
     if cfgs.distributed:
-        model_train.run_train(cfgs, model_train.model.module)
+        model_train.run_train_distributed(cfgs)
     else:
-        model_train.run_train(cfgs, model_train.model)
+        model_train.run_train(cfgs)
    
 

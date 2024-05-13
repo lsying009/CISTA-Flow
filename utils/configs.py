@@ -77,7 +77,9 @@ def set_configs(parser):
                         help='Load epoch for continue training')
     parser.add_argument('--load_lr', default=0.0001, type=float,
                         help='load learning rate for continue training')
-
+    parser.add_argument('--train_all', dest='train_all', action='store_true',
+                        help='If optimise rec and flow networks together')
+    parser.set_defaults(train_all=False)
     
     parser.add_argument('--is_load_flow', dest='is_load_flow', action='store_true')
     parser.set_defaults(is_load_flow=False)
@@ -127,7 +129,10 @@ def set_configs(parser):
     parser.add_argument('--k_shift', default=-1, type=int)
     parser.add_argument('--n_event_skip', default=0, type=int)
     parser.add_argument('--dvs', dest='dvs', default=None, type=str) #tore
-
+    # parser.add_argument('--is_with_flow', dest='is_with_flow', action='store_true',
+    #                     help='Whether to load flow (default: False)')
+    # parser.set_defaults(is_with_flow=False)
+    
     # save info
     parser.add_argument('-o', '--output_folder', default='test_images', type=str,
                         help='Folder to save the inference results (default: test_images)')
