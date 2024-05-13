@@ -8,7 +8,7 @@ This repository is the official implementation of [Enhanced Event-Based Video Re
 
 
 ## Training
-We propose an iterative training framework for this combined system, as illustrated in figure below. Note that ```train.py``` only contains code for training CISTA-Flow after obtaining DCEIFlow (GT I) and CISTA (GT Flow). ```path_to_flownet``` refers to the path to DCEIFlow (GT I) and ```path_to_e2v``` refers to the path to CISTA (GT Flow). We provided the two pretrained models ```dceiflow-GTI.pth.tar/eraft-GTI.pth.tar``` and ```cista-GTFlow.pth.tar``` under ```pretrained```. Here, ```model_mode="cista-eiflow" or "cista-eraft"```. 
+We propose an iterative training framework for this combined system, as illustrated in figure below. Note that ```train.py``` only contains code for training CISTA-Flow after obtaining DCEIFlow (GT I) and CISTA (GT Flow). ```path_to_flownet``` refers to the path to DCEIFlow (GT I) and ```path_to_e2v``` refers to the path to CISTA (GT Flow). We provided the two pretrained models ```dceiflow-GTI.pth.tar/eraft-GTI.pth.tar``` and ```cista-GTFlow.pth.tar``` under ```pretrained```. Here, ```model_mode="cista-eiflow" or "cista-eraft"```. We also provide code for integrating [IDNET](https://arxiv.org/abs/2211.13726) using ```model_mode="cista-idnet"```. 
 
 ![train](cista-flow-train.png)
 
